@@ -3573,15 +3573,35 @@ def init_pipe(pipe, kwargs, profile):
     source_budgets = kwargs.get("budgets", None)
     if source_budgets is None:  kwargs["budgets"] = source_budgets = {}
     mmgp_profile = int(profile)
-    if mmgp_profile in (2, 4, 5):
-        default_transformer_budget = default_transformer2_budget= kwargs.get("budgets", 100) 
-        if isinstance(default_transformer_budget, dict):
-            default_transformer_budget = default_transformer_budget.get("transformer", 100) 
-            default_transformer2_budget = default_transformer2_budget.get("transformer2", 100) 
+    # if mmgp_profile in (2, 4, 5):
+    #     default_transformer_budget = default_transformer2_budget= kwargs.get("budgets", 100) 
+    #     if isinstance(default_transformer_budget, dict):
+    #         default_transformer_budget = default_transformer_budget.get("transformer", 100) 
+    #         default_transformer2_budget = default_transformer2_budget.get("transformer2", 100) 
 
-        budgets = { "transformer" : default_transformer_budget if preload  == 0 else preload, "text_encoder" : 100 if preload  == 0 else preload, "*" : max(1000 if profile==5 else 3000 , preload) }
+    #     budgets = { "transformer" : default_transformer_budget if preload  == 0 else preload, "text_encoder" : 100 if preload  == 0 else preload, "*" : max(1000 if profile==5 else 3000 , preload) }
+    #     if "transformer2" in pipe:
+    #         budgets["transformer2"] = default_transformer2_budget if preload  == 0 else preload
+    #     source_budgets.update(budgets)
+    if mmgp_profile in (2, 4, 5):
+        # Dynamic smart budget: ~40% of total VRAM to prevent severe CPU/PCIe bottlenecks
+        if preload == 0:
+            try:
+                total_vram_mb = torch.cuda.get_device_properties(0).total_memory / 1048576
+                smart_budget = int(total_vram_mb * 0.4)
+            except Exception:
+                smart_budget = 4000
+        else:
+            smart_budget = preload
+
+        default_transformer_budget = default_transformer2_budget = kwargs.get("budgets", smart_budget) 
+        if isinstance(default_transformer_budget, dict):
+            default_transformer_budget = default_transformer_budget.get("transformer", smart_budget) 
+            default_transformer2_budget = default_transformer2_budget.get("transformer2", smart_budget) 
+
+        budgets = { "transformer" : default_transformer_budget, "text_encoder" : smart_budget, "*" : max(1000 if mmgp_profile==5 else 3000 , smart_budget) }
         if "transformer2" in pipe:
-            budgets["transformer2"] = default_transformer2_budget if preload  == 0 else preload
+            budgets["transformer2"] = default_transformer2_budget
         source_budgets.update(budgets)
     elif mmgp_profile == 3:
         source_budgets.update({ "*" : "70%" })
