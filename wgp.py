@@ -3003,9 +3003,26 @@ if transformer_type != None and not transformer_type in model_types and not tran
 if transformer_type == None:
     transformer_type = transformer_types[0] if len(transformer_types) > 0 else "t2v"
 
-transformer_quantization =server_config.get("transformer_quantization", "int8")
+# transformer_quantization =server_config.get("transformer_quantization", "int8")
 
+# transformer_dtype_policy = server_config.get("transformer_dtype_policy", "")
+# if args.fp16:
+#     transformer_dtype_policy = "fp16" 
+
+transformer_quantization = server_config.get("transformer_quantization", "int8")
 transformer_dtype_policy = server_config.get("transformer_dtype_policy", "")
+
+# --- KAGGLE / TESLA T4 AUTO-FIX ---
+try:
+    major, minor = torch.cuda.get_device_capability()
+    if major < 8:
+        print("\n[Tesla T4 / Older GPU Detected] Forcing Native FP16 and disabling INT8 Quantization...")
+        transformer_quantization = ""  # Force no quantization
+        transformer_dtype_policy = "fp16" # Force FP16
+except Exception:
+    pass
+# ---------------------------------------------
+
 if args.fp16:
     transformer_dtype_policy = "fp16" 
 if args.bf16:
