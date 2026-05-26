@@ -6455,8 +6455,21 @@ def generate_video(
         old_vae_upsampling =  None if reload_needed or wan_model is None or not hasattr(wan_model, "vae") or not hasattr(wan_model.vae, "upsampling_set") else wan_model.vae.upsampling_set
         reload_needed = reload_needed or old_vae_upsampling != new_vae_upsampling
         if new_vae_upsampling: model_kwargs = {"VAE_upsampling": new_vae_upsampling}
+    # output_type = get_profile_type_for_model(model_type, image_mode)
+    # profile = compute_profile(override_profile, output_type)
+    # if model_type != transformer_type or reload_needed or profile != loaded_profile:
     output_type = get_profile_type_for_model(model_type, image_mode)
     profile = compute_profile(override_profile, output_type)
+    
+    # --- KAGGLE / TESLA T4 VRAM LOCK FIX ---
+    if "1.3b" in str(model_type).lower() or "1.3b" in str(base_model_type).lower():
+        print("\n[Tesla T4 Fix] Forcing Profile 3: Locking 1.3B model in VRAM to stop PCIe swapping.")
+        profile = 3
+    elif profile in [2, 4]:
+        print("\n[Tesla T4 Fix] 14B model requires swapping. Disabling Async Transfers to save CPU.")
+        profile = 4.5
+    # ---------------------------------------
+    
     if model_type != transformer_type or reload_needed or profile != loaded_profile:
         release_model()
         send_cmd("status", f"Loading model {get_model_name(model_type)}...")
