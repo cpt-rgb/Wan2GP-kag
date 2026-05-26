@@ -3586,9 +3586,14 @@ def init_pipe(pipe, kwargs, profile):
     elif mmgp_profile == 3:
         source_budgets.update({ "*" : "70%" })
 
-    if "transformer2" in pipe:
-        if profile in [3,4]:
-            kwargs["pinnedMemory"] = ["transformer", "transformer2"]
+    if profile in [3, 4, 4.5]:
+        pinned = []
+        if "transformer" in pipe:
+            pinned.append("transformer")
+        if "transformer2" in pipe:
+            pinned.append("transformer2")
+        if pinned:
+            kwargs["pinnedMemory"] = pinned
     
     if profile == 4.5:
         kwargs["asyncTransfers"] = False
@@ -3849,7 +3854,8 @@ def generate_header(model_type, compile, attention_mode):
 
     if compile:
         header += ", Pytorch compilation <B>ON</B>"
-    if "fp16" in model_filename:
+    actual_dtype = get_transformer_dtype(model_type, transformer_dtype_policy)
+    if actual_dtype == torch.float16:
         header += ", Data Type <B>FP16</B>"
     else:
         header += ", Data Type <B>BF16</B>"
