@@ -179,6 +179,27 @@ def sageattn3_wrapper(
 # except ImportError:
 #     sageattn2 = sageattn_qk_int8_pv_fp8_window_cuda
 
+# @torch.compiler.disable()
+# def sdpa_wrapper(
+#         qkv_list,
+#         attention_length,
+#         attention_mask = None,
+#         causal = False,
+#     ):
+#     q, k, v = qkv_list
+
+#     q = q.transpose(1,2)
+#     k = k.transpose(1,2)
+#     v = v.transpose(1,2)
+#     if attention_mask != None:
+#         attention_mask = attention_mask.transpose(1,2)
+#     o = F.scaled_dot_product_attention(q, k, v, attn_mask=attention_mask, is_causal=causal).transpose(1,2)
+#     del q, k ,v
+#     qkv_list.clear()
+
+#     return o
+
+
 @torch.compiler.disable()
 def sdpa_wrapper(
         qkv_list,
@@ -188,12 +209,23 @@ def sdpa_wrapper(
     ):
     q, k, v = qkv_list
 
-    q = q.transpose(1,2)
-    k = k.transpose(1,2)
-    v = v.transpose(1,2)
+    # Force contiguous memory layout to prevent PyTorch from falling back to the slow Math backend
+    q = q.transpose(1,2).contiguous()
+    k = k.transpose(1,2).contiguous()
+    v = v.transpose(1,2).contiguous()
     if attention_mask != None:
-        attention_mask = attention_mask.transpose(1,2)
-    o = F.scaled_dot_product_attention(q, k, v, attn_mask=attention_mask, is_causal=causal).transpose(1,2)
+        attention_mask = attention_mask.transpose(1,2).contiguous()
+        
+    # Explicitly demand memory efficient attention
+    with torch.backends.cuda.sdp_kernel(enable_flash=True, enable_math=False, enable_mem_efficient=True):
+        try:
+            o = F.scaled_dot_product_attention(q, k, v, attn_mask=attention_mask, is_causal=causal)
+        except Exception:
+            # Fallback only if mem_efficient explicitly rejects the shape
+            with torch.backends.cuda.sdp_kernel(enable_flash=False, enable_math=True, enable_mem_efficient=False):
+                o = F.scaled_dot_product_attention(q, k, v, attn_mask=attention_mask, is_causal=causal)
+                
+    o = o.transpose(1,2).contiguous()
     del q, k ,v
     qkv_list.clear()
 
